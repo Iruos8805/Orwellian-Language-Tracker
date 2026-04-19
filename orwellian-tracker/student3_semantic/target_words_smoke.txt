@@ -1,0 +1,10 @@
+senate
+house
+bill
+president
+government
+committee
+amendment
+tax
+budget
+policy

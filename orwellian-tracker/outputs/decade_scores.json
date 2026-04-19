@@ -1,0 +1,16 @@
+{
+  "1990s": {
+    "Diversity_loss": 0.0,
+    "Logic_flat": 1.0,
+    "Drift_rate": 0.0,
+    "Time": 13,
+    "Newspeak_Index": 0.0
+  },
+  "2010s": {
+    "Diversity_loss": 0.9999999999999999,
+    "Logic_flat": 0.0,
+    "Drift_rate": 1.0,
+    "Time": 15,
+    "Newspeak_Index": 0.06666666666666667
+  }
+}

@@ -26,16 +26,16 @@ def main() -> None:
     syn = pd.read_csv(args.syntactic)
     sem = pd.read_csv(args.semantic)
 
-    sem = sem.rename(columns={"Drift_rate_normalized": "Drift_rate"})
-    cols_sem = (
-        ["decade", "Drift_rate"]
-        if "Drift_rate" in sem.columns
-        else ["decade", "Drift_rate"]
-    )
+    if "Drift_rate_normalized" in sem.columns:
+        sem = sem[["decade", "Drift_rate_normalized"]].rename(
+            columns={"Drift_rate_normalized": "Drift_rate"}
+        )
+    else:
+        sem = sem[["decade", "Drift_rate"]]
     merged = (
         lex[["decade", "Diversity_loss"]]
         .merge(syn[["decade", "Logic_flat"]], on="decade", how="inner")
-        .merge(sem[cols_sem], on="decade", how="inner")
+        .merge(sem, on="decade", how="inner")
     )
 
     scaler = MinMaxScaler()

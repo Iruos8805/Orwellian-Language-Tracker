@@ -29,10 +29,15 @@ def main() -> None:
     amr = pd.read_csv(args.amr_metrics, dtype={"speech_id": str})
     stats = pd.read_csv(args.speech_stats, dtype={"speech_id": str})
 
-    merged = amr.merge(stats, on="speech_id", how="inner")
-    merged["subordination_ratio"] = merged["subordinate_clause_count"] / merged[
-        "sentence_count"
-    ].replace(0, np.nan)
+    merged = amr.merge(stats, on="speech_id", how="inner", suffixes=("_amr", "_tok"))
+
+    sent_col = "sentence_count_tok" if "sentence_count_tok" in merged.columns else "sentence_count"
+    sub_col = (
+        "subordinate_clause_count_tok"
+        if "subordinate_clause_count_tok" in merged.columns
+        else "subordinate_clause_count"
+    )
+    merged["subordination_ratio"] = merged[sub_col] / merged[sent_col].replace(0, np.nan)
     merged["mean_LENS"] = merged.apply(
         lambda r: proxy_lens_score(
             r["avg_amr_depth"],
@@ -63,16 +68,11 @@ def main() -> None:
     out.to_csv(output_dir / "depth_scores.csv", index=False)
 
     plt.figure(figsize=(12, 5))
-    plt.plot(
-        out["decade"].astype(str), out["avg_amr_depth"], marker="o", label="AMR depth"
-    )
-    plt.plot(
-        out["decade"].astype(str),
-        out["subordination_ratio"],
-        marker="o",
-        label="Subordination ratio",
-    )
-    plt.xticks(rotation=45)
+    x_labels = out["decade"].astype(str).to_numpy()
+    x = np.arange(len(x_labels))
+    plt.plot(x, out["avg_amr_depth"].to_numpy(), marker="o", label="AMR depth")
+    plt.plot(x, out["subordination_ratio"].to_numpy(), marker="o", label="Subordination ratio")
+    plt.xticks(x, x_labels, rotation=45)
     plt.ylabel("Score")
     plt.title("Syntactic depth trend")
     plt.legend()

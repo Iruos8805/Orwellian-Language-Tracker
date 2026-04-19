@@ -70,14 +70,14 @@ def read_congress_bundle(hein_dir: Path, congress: str) -> pd.DataFrame:
     if not descr_path.exists() or not speeches_path.exists():
         return pd.DataFrame()
 
-    descr = pd.read_csv(descr_path, sep="|", dtype=str)
-    speeches = pd.read_csv(speeches_path, sep="|", dtype=str)
+    descr = pd.read_csv(descr_path, sep="|", dtype=str, encoding="latin-1")
+    speeches = read_speeches_file(speeches_path)
 
     merged = descr.merge(speeches, on="speech_id", how="left")
     merged["congress"] = int(congress)
 
     if speaker_map_path.exists():
-        smap = pd.read_csv(speaker_map_path, sep="|", dtype=str)
+        smap = pd.read_csv(speaker_map_path, sep="|", dtype=str, encoding="latin-1")
         smap = smap.rename(columns={"speakerid": "speaker_id"})
         keep_cols = [
             c
@@ -98,14 +98,50 @@ def read_congress_bundle(hein_dir: Path, congress: str) -> pd.DataFrame:
     return merged
 
 
-def build_cleaned_corpus(hein_dir: Path, procedural_phrases: list[str]) -> pd.DataFrame:
+def read_speeches_file(path: Path) -> pd.DataFrame:
+    rows: list[dict[str, str]] = []
+    with path.open("r", encoding="latin-1", errors="ignore") as fh:
+        header = fh.readline()
+        if "speech_id|speech" not in header:
+            raise ValueError(f"Unexpected speeches header in {path}")
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            if "|" not in line:
+                continue
+            speech_id, speech = line.split("|", 1)
+            rows.append({"speech_id": speech_id, "speech": speech})
+    return pd.DataFrame(rows)
+
+
+def build_cleaned_corpus(
+    hein_dir: Path,
+    procedural_phrases: list[str],
+    limit: int = 0,
+    sample_per_congress: int = 0,
+    congress_filter: list[str] | None = None,
+) -> pd.DataFrame:
     descr_files = sorted(hein_dir.glob("descr_*.txt"))
     congresses = [f.stem.split("_")[-1] for f in descr_files]
+    if congress_filter:
+        wanted = set(congress_filter)
+        congresses = [c for c in congresses if c in wanted]
     frames = []
+    remaining = limit if limit and limit > 0 else None
     for congress in congresses:
         frame = read_congress_bundle(hein_dir, congress)
         if not frame.empty:
+            if sample_per_congress and sample_per_congress > 0:
+                frame = frame.head(sample_per_congress).copy()
+            if remaining is not None:
+                if remaining <= 0:
+                    break
+                frame = frame.head(remaining).copy()
+                remaining -= len(frame)
             frames.append(frame)
+        if remaining is not None and remaining <= 0:
+            break
     if not frames:
         raise FileNotFoundError(
             "No valid descr/speeches bundles found in hein directory."
@@ -126,12 +162,22 @@ def main() -> None:
     parser.add_argument("--hein-dir", type=Path, required=True)
     parser.add_argument("--vocab-procedural", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--sample-per-congress", type=int, default=0)
+    parser.add_argument("--congress-list", default="")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
     procedural_phrases = load_procedural_phrases(args.vocab_procedural)
 
-    df = build_cleaned_corpus(args.hein_dir, procedural_phrases)
+    congress_filter = [c.strip() for c in args.congress_list.split(",") if c.strip()]
+    df = build_cleaned_corpus(
+        args.hein_dir,
+        procedural_phrases,
+        limit=args.limit,
+        sample_per_congress=args.sample_per_congress,
+        congress_filter=congress_filter,
+    )
 
     excluded = df[df["too_short"]].copy()
     included = df[~df["too_short"]].copy()

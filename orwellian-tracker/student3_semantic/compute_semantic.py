@@ -124,12 +124,16 @@ def main() -> None:
     decade.to_csv(output_dir / "drift_rate_by_decade.csv", index=False)
 
     plt.figure(figsize=(12, 5))
+    decade_order = [d for d in DECADE_ORDER if d in set(drift["decade"].astype(str))]
+    x_map = {d: i for i, d in enumerate(decade_order)}
     for w in targets[:10]:
-        sub = drift[drift["word"] == w]
+        sub = drift[drift["word"] == w].copy()
         if sub.empty:
             continue
-        plt.plot(sub["decade"], sub["cosine_drift"], marker="o", alpha=0.6)
-    plt.xticks(rotation=45)
+        sub["x"] = sub["decade"].astype(str).map(x_map)
+        sub = sub.sort_values("x")
+        plt.plot(sub["x"].to_numpy(), sub["cosine_drift"].to_numpy(), marker="o", alpha=0.6)
+    plt.xticks(list(x_map.values()), list(x_map.keys()), rotation=45)
     plt.ylabel("Cosine drift")
     plt.title("Target-word semantic drift across decades")
     plt.tight_layout()

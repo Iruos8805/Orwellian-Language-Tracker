@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -29,9 +30,12 @@ def main() -> None:
     idx = pd.read_csv(args.index)
     party = pd.read_csv(args.party)
 
+    x_lex_labels = lex["decade"].astype(str).to_numpy()
+    x_lex = np.arange(len(x_lex_labels))
+
     plt.figure(figsize=(12, 5))
-    plt.plot(lex["decade"], lex["MATTR"], marker="o", label="MATTR")
-    plt.xticks(rotation=45)
+    plt.plot(x_lex, lex["MATTR"].to_numpy(), marker="o", label="MATTR")
+    plt.xticks(x_lex, x_lex_labels, rotation=45)
     plt.ylabel("MATTR")
     plt.title("Hero graph: lexical diversity over time")
     plt.tight_layout()
@@ -39,17 +43,20 @@ def main() -> None:
     plt.close()
 
     fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-    axes[0].plot(lex["decade"], lex["MATTR"], marker="o", label="MATTR")
-    axes[0].plot(
-        lex["decade"], lex["Diversity_loss"], marker="o", label="Diversity_loss"
-    )
+    axes[0].plot(x_lex, lex["MATTR"].to_numpy(), marker="o", label="MATTR")
+    axes[0].plot(x_lex, lex["Diversity_loss"].to_numpy(), marker="o", label="Diversity_loss")
     axes[0].legend()
-    axes[1].plot(syn["decade"], syn["avg_amr_depth"], marker="o", label="AMR depth")
-    axes[1].plot(syn["decade"], syn["Logic_flat"], marker="o", label="Logic_flat")
+    x_syn_labels = syn["decade"].astype(str).to_numpy()
+    x_syn = np.arange(len(x_syn_labels))
+    axes[1].plot(x_syn, syn["avg_amr_depth"].to_numpy(), marker="o", label="AMR depth")
+    axes[1].plot(x_syn, syn["Logic_flat"].to_numpy(), marker="o", label="Logic_flat")
     axes[1].legend()
-    axes[2].plot(sem["decade"], sem["Drift_rate"], marker="o", label="Drift_rate")
+    x_sem_labels = sem["decade"].astype(str).to_numpy()
+    x_sem = np.arange(len(x_sem_labels))
+    axes[2].plot(x_sem, sem["Drift_rate"].to_numpy(), marker="o", label="Drift_rate")
     axes[2].legend()
-    axes[2].tick_params(axis="x", rotation=45)
+    axes[2].set_xticks(x_sem)
+    axes[2].set_xticklabels(x_sem_labels, rotation=45)
     fig.suptitle("Three-panel decay trends")
     fig.tight_layout()
     fig.savefig(out / "three_panel_trends.png", dpi=180)
@@ -64,8 +71,10 @@ def main() -> None:
     plt.close()
 
     plt.figure(figsize=(12, 5))
-    plt.plot(idx["decade"], idx["Newspeak_Index"], marker="o")
-    plt.xticks(rotation=45)
+    x_idx_labels = idx["decade"].astype(str).to_numpy()
+    x_idx = np.arange(len(x_idx_labels))
+    plt.plot(x_idx, idx["Newspeak_Index"].to_numpy(), marker="o")
+    plt.xticks(x_idx, x_idx_labels, rotation=45)
     plt.ylabel("Newspeak Index")
     plt.title("Unified Newspeak Index by decade")
     plt.tight_layout()

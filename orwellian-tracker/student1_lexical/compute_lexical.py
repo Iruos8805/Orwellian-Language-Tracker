@@ -125,18 +125,13 @@ def save_validation_plot(
     lexical: pd.DataFrame, validation: pd.DataFrame, output_dir: Path
 ):
     plt.figure(figsize=(12, 5))
-    plt.plot(
-        lexical["decade"].astype(str), lexical["MATTR"], marker="o", label="Hein MATTR"
-    )
+    x_labels = lexical["decade"].astype(str).to_numpy()
+    x = np.arange(len(x_labels))
+    plt.plot(x, lexical["MATTR"].to_numpy(), marker="o", label="Hein MATTR")
     if not validation.empty:
         merged = lexical.merge(validation, on="decade", how="left")
-        plt.plot(
-            merged["decade"].astype(str),
-            merged["vocab_like_ttr"],
-            marker="o",
-            label="Vocabulary overlay",
-        )
-    plt.xticks(rotation=45)
+        plt.plot(x, merged["vocab_like_ttr"].to_numpy(), marker="o", label="Vocabulary overlay")
+    plt.xticks(x, x_labels, rotation=45)
     plt.ylabel("Score")
     plt.title("Lexical diversity trend")
     plt.legend()
