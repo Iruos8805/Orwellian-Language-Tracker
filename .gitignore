@@ -1,0 +1,16 @@
+# Python bytecode and caches
+__pycache__/
+*.pyc
+.ruff_cache/
+
+# Large data directories
+hein-daily/
+speakermap_stats/
+vocabulary/
+
+# Local environment/IDE folders (optional but recommended)
+.venv/
+env/
+venv/
+.vscode/
+.idea/
