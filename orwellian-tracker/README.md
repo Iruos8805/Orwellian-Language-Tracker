@@ -8,6 +8,13 @@ Longitudinal NLP pipeline for measuring linguistic pruning in U.S. Congressional
 - In this workspace, `hein-daily` currently contains congress 97-114 (roughly 1981-2017), so produced decade outputs will be a subset of the full 15 bins.
 - `vocabulary/vocab.txt` in this workspace is an unlabeled bigram list (no year column), so year-level validation falls back to available congressional 2-gram files.
 
+## Runtime hardening defaults
+
+- AMR parser supports GPU enforcement with `--require-gpu` and sentence caps via `--max-sentences-per-speech`.
+- Tokenization and AMR stages stream to disk with `--flush-every` to avoid large RAM spikes.
+- Semantic drift uses orthogonal Procrustes alignment and emits `student3_semantic/word_coverage.csv` for auditability.
+- Integration writes raw and normalized pillar scores and stores global min/max ranges in `integration/global_scaler_ranges.csv`.
+
 ## Repository layout
 
 ```
@@ -39,6 +46,8 @@ python -m spacy download en_core_web_lg
 Run from `orwellian-tracker/`.
 
 ```bash
+python preprocessing/clean_hidden.py --root ../hein-daily
+
 python preprocessing/cleaner.py \
   --hein-dir ../hein-daily \
   --vocab-procedural ../vocabulary/vocabulary/procedural.txt \
@@ -46,24 +55,30 @@ python preprocessing/cleaner.py \
 
 python preprocessing/tokenizer.py \
   --input-csv data/processed/cleaned_speeches.csv \
-  --output-dir data/processed
+  --output-dir data/processed \
+  --spacy-model en_core_web_lg \
+  --flush-every 1000
 
 python preprocessing/amr_parser.py \
-  --sentences-csv data/processed/sentence_records.csv.gz \
+  --sentences-csv data/processed/sentence_records.csv \
   --output-dir data/processed \
-  --workers 2
+  --workers 2 \
+  --max-sentences-per-speech 8 \
+  --flush-every 1000 \
+  --require-gpu
 
 python preprocessing/embedder.py \
   --cleaned-csv data/processed/cleaned_speeches.csv \
-  --sentences-csv data/processed/sentence_records.csv.gz \
-  --tokens-csv data/processed/token_records.csv.gz \
+  --sentences-csv data/processed/sentence_records.csv \
+  --tokens-csv data/processed/token_records.csv \
   --output-dir data/processed
 
 python student1_lexical/compute_lexical.py \
   --cleaned-csv data/processed/cleaned_speeches.csv \
-  --tokens-csv data/processed/token_records.csv.gz \
+  --tokens-csv data/processed/token_records.csv \
   --hein-dir ../hein-daily \
   --vocab-dir ../vocabulary/vocabulary \
+  --mattr-window 500 \
   --output-dir student1_lexical
 
 python student2_syntactic/compute_syntactic.py \
@@ -74,7 +89,9 @@ python student2_syntactic/compute_syntactic.py \
 python student3_semantic/compute_semantic.py \
   --cleaned-csv data/processed/cleaned_speeches.csv \
   --w2v-dir data/processed/w2v_models \
-  --targets-file student3_semantic/target_words.txt \
+  --targets-file student3_semantic/target_words_full.txt \
+  --min-shared-vocab 2000 \
+  --min-word-count 20 \
   --output-dir student3_semantic
 
 python integration/newspeak_index.py \
@@ -82,7 +99,8 @@ python integration/newspeak_index.py \
   --syntactic student2_syntactic/depth_scores.csv \
   --semantic student3_semantic/drift_rate_by_decade.csv \
   --output-dir integration \
-  --outputs-dir outputs
+  --outputs-dir outputs \
+  --global-scaler-file integration/global_scaler_ranges.csv
 
 python integration/speakermap_join.py \
   --cleaned-csv data/processed/cleaned_speeches.csv \

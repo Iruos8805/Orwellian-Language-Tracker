@@ -63,20 +63,55 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
     parser.add_argument("--spacy-model", default="en_core_web_lg")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--flush-every", type=int, default=1000)
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
+    token_out = output_dir / "token_records.csv"
+    sentence_out = output_dir / "sentence_records.csv"
+    stats_out = output_dir / "speech_token_stats.csv"
+
+    for path in [token_out, sentence_out, stats_out]:
+        if path.exists():
+            path.unlink()
+
     df = pd.read_csv(args.input_csv, dtype={"speech_id": str})
     if args.limit and args.limit > 0:
         df = df.head(args.limit)
 
     nlp = load_nlp(args.spacy_model)
 
-    token_rows = []
-    sentence_rows = []
-    speech_stats = []
+    token_rows: list[dict] = []
+    sentence_rows: list[dict] = []
+    speech_stats: list[dict] = []
 
-    for row in df.itertuples(index=False):
+    def flush_rows() -> None:
+        if token_rows:
+            pd.DataFrame(token_rows).to_csv(
+                token_out,
+                index=False,
+                mode="a",
+                header=not token_out.exists(),
+            )
+            token_rows.clear()
+        if sentence_rows:
+            pd.DataFrame(sentence_rows).to_csv(
+                sentence_out,
+                index=False,
+                mode="a",
+                header=not sentence_out.exists(),
+            )
+            sentence_rows.clear()
+        if speech_stats:
+            pd.DataFrame(speech_stats).to_csv(
+                stats_out,
+                index=False,
+                mode="a",
+                header=not stats_out.exists(),
+            )
+            speech_stats.clear()
+
+    for idx, row in enumerate(df.itertuples(index=False), start=1):
         speech_id = str(row.speech_id)
         text = str(row.clean_text)
         tokens, sentences = process_speech(nlp, speech_id, text)
@@ -111,21 +146,14 @@ def main() -> None:
             }
         )
 
-    token_df = pd.DataFrame(token_rows)
-    sentence_df = pd.DataFrame(sentence_rows)
-    stats_df = pd.DataFrame(speech_stats)
+        if idx % max(args.flush_every, 1) == 0:
+            flush_rows()
 
-    token_df.to_csv(
-        output_dir / "token_records.csv.gz", index=False, compression="gzip"
-    )
-    sentence_df.to_csv(
-        output_dir / "sentence_records.csv.gz", index=False, compression="gzip"
-    )
-    stats_df.to_csv(output_dir / "speech_token_stats.csv", index=False)
+    flush_rows()
 
-    print(f"Saved tokens: {output_dir / 'token_records.csv.gz'}")
-    print(f"Saved sentences: {output_dir / 'sentence_records.csv.gz'}")
-    print(f"Saved speech stats: {output_dir / 'speech_token_stats.csv'}")
+    print(f"Saved tokens: {token_out}")
+    print(f"Saved sentences: {sentence_out}")
+    print(f"Saved speech stats: {stats_out}")
 
 
 if __name__ == "__main__":

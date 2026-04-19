@@ -77,6 +77,24 @@ def build_speech_scores(cleaned: pd.DataFrame, token_df: pd.DataFrame) -> pd.Dat
     return speech_scores
 
 
+def lexical_qc(speech_scores: pd.DataFrame, cleaned: pd.DataFrame) -> pd.DataFrame:
+    merged = speech_scores.merge(
+        cleaned[["speech_id", "decade", "clean_word_count"]],
+        on=["speech_id", "decade"],
+        how="left",
+    )
+    return (
+        merged.groupby("decade", as_index=False)
+        .agg(
+            speeches=("speech_id", "nunique"),
+            mean_clean_words=("clean_word_count", "mean"),
+            mean_unique_adj_rate=("unique_adj_rate", "mean"),
+        )
+        .sort_values("decade")
+        .reset_index(drop=True)
+    )
+
+
 def aggregate_by_decade(speech_scores: pd.DataFrame) -> pd.DataFrame:
     dec = speech_scores.groupby("decade", as_index=False).agg(
         TTR=("TTR", "mean"),
@@ -149,6 +167,7 @@ def main() -> None:
     parser.add_argument("--hein-dir", type=Path, required=True)
     parser.add_argument("--vocab-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("student1_lexical"))
+    parser.add_argument("--mattr-window", type=int, default=500)
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -157,8 +176,25 @@ def main() -> None:
     tokens = pd.read_csv(args.tokens_csv, dtype={"speech_id": str})
 
     speech_scores = build_speech_scores(cleaned, tokens)
+    if args.mattr_window != 500:
+        token_alpha = tokens[tokens["is_alpha"] == True].copy()
+        token_alpha["lemma"] = token_alpha["lemma"].fillna("").astype(str)
+        mattr_override = []
+        for speech_id, grp in token_alpha.groupby("speech_id"):
+            mattr_override.append(
+                {
+                    "speech_id": speech_id,
+                    "MATTR": compute_mattr(grp["lemma"].tolist(), window=args.mattr_window),
+                }
+            )
+        mattr_df = pd.DataFrame(mattr_override)
+        speech_scores = speech_scores.drop(columns=["MATTR"]).merge(mattr_df, on="speech_id", how="left")
+
     lexical_decade = aggregate_by_decade(speech_scores)
     lexical_decade.to_csv(output_dir / "diversity_scores.csv", index=False)
+
+    qc = lexical_qc(speech_scores, cleaned)
+    qc.to_csv(output_dir / "lexical_qc.csv", index=False)
 
     validation = fallback_vocab_validation(args.hein_dir)
     validation.to_csv(output_dir / "vocabulary_validation.csv", index=False)
@@ -176,6 +212,7 @@ def main() -> None:
 
     print(f"Saved lexical scores: {output_dir / 'diversity_scores.csv'}")
     print(f"Saved validation overlay: {output_dir / 'mattr_validation_overlay.png'}")
+    print(f"Saved lexical QC: {output_dir / 'lexical_qc.csv'}")
     print(f"Validation correlation: {corr}")
 
 

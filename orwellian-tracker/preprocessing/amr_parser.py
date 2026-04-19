@@ -106,14 +106,26 @@ def main() -> None:
     parser.add_argument("--chunk-size", type=int, default=200)
     parser.add_argument("--disable-amr", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--max-sentences-per-speech", type=int, default=8)
+    parser.add_argument("--flush-every", type=int, default=1000)
+    parser.add_argument("--require-gpu", action="store_true")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
     amr_dir = ensure_dir(output_dir / "amr_penman")
+    sentence_out = output_dir / "amr_sentence_metrics.csv"
+
+    if sentence_out.exists():
+        sentence_out.unlink()
 
     sent_df = pd.read_csv(
         args.sentences_csv, dtype={"speech_id": str, "sentence_id": str}
     )
+    sent_df = sent_df.sort_values(["speech_id", "sentence_idx"], kind="stable")
+    sent_df = sent_df.groupby("speech_id", as_index=False, group_keys=False).head(
+        max(args.max_sentences_per_speech, 1)
+    )
+
     if args.limit and args.limit > 0:
         sent_df = sent_df.head(args.limit)
 
@@ -127,35 +139,89 @@ def main() -> None:
     chunks = list(chunked(tuples, args.chunk_size))
     amr_enabled = not args.disable_amr
 
-    with mp.Pool(processes=max(1, args.workers)) as pool:
-        results = pool.starmap(_worker_process, [(c, amr_enabled) for c in chunks])
+    cuda_available = False
+    if amr_enabled:
+        try:
+            import torch
 
-    rows = [item for sub in results for item in sub]
-    amr_sentence_df = pd.DataFrame(rows)
-    amr_sentence_df.to_csv(
-        output_dir / "amr_sentence_metrics.csv.gz", index=False, compression="gzip"
-    )
+            cuda_available = bool(torch.cuda.is_available())
+        except Exception:
+            cuda_available = False
 
-    for speech_id, sub in amr_sentence_df.groupby("speech_id"):
-        penman_lines = [p for p in sub["amr_penman"].tolist() if p]
-        if penman_lines:
-            (amr_dir / f"{speech_id}.penman").write_text(
-                "\n\n".join(penman_lines), encoding="utf-8"
+    print(f"AMR enabled: {amr_enabled}")
+    print(f"CUDA available: {cuda_available}")
+
+    if amr_enabled and args.require_gpu:
+        if not cuda_available:
+            raise RuntimeError(
+                "AMR GPU check failed: torch.cuda.is_available() is False. "
+                "Use --disable-amr for CPU heuristic mode or rerun on a CUDA-ready environment."
             )
 
-    agg = (
-        amr_sentence_df.groupby("speech_id", as_index=False)
-        .agg(
-            avg_amr_nodes=("amr_nodes", "mean"),
-            avg_amr_edges=("amr_edges", "mean"),
-            avg_amr_depth=("amr_depth", "mean"),
-            sentence_count=("sentence_id", "count"),
+    speech_agg: dict[str, dict[str, float]] = {}
+    penman_by_speech: dict[str, list[str]] = {}
+    pending_rows: list[dict] = []
+
+    with mp.Pool(processes=max(1, args.workers)) as pool:
+        for result_chunk in pool.starmap(_worker_process, [(c, amr_enabled) for c in chunks]):
+            pending_rows.extend(result_chunk)
+
+            for row in result_chunk:
+                sid = row["speech_id"]
+                acc = speech_agg.setdefault(
+                    sid,
+                    {
+                        "speech_id": sid,
+                        "sum_nodes": 0.0,
+                        "sum_edges": 0.0,
+                        "sum_depth": 0.0,
+                        "sentence_count": 0.0,
+                    },
+                )
+                acc["sum_nodes"] += float(row["amr_nodes"])
+                acc["sum_edges"] += float(row["amr_edges"])
+                acc["sum_depth"] += float(row["amr_depth"])
+                acc["sentence_count"] += 1.0
+
+                if row["amr_penman"]:
+                    penman_by_speech.setdefault(sid, []).append(row["amr_penman"])
+
+            if len(pending_rows) >= max(args.flush_every, 1):
+                pd.DataFrame(pending_rows).to_csv(
+                    sentence_out,
+                    index=False,
+                    mode="a",
+                    header=not sentence_out.exists(),
+                )
+                pending_rows.clear()
+
+    if pending_rows:
+        pd.DataFrame(pending_rows).to_csv(
+            sentence_out,
+            index=False,
+            mode="a",
+            header=not sentence_out.exists(),
         )
-        .reset_index(drop=True)
-    )
+
+    for speech_id, penmans in penman_by_speech.items():
+        (amr_dir / f"{speech_id}.penman").write_text("\n\n".join(penmans), encoding="utf-8")
+
+    agg_rows = []
+    for sid, acc in speech_agg.items():
+        n = max(acc["sentence_count"], 1.0)
+        agg_rows.append(
+            {
+                "speech_id": sid,
+                "avg_amr_nodes": acc["sum_nodes"] / n,
+                "avg_amr_edges": acc["sum_edges"] / n,
+                "avg_amr_depth": acc["sum_depth"] / n,
+                "sentence_count": int(acc["sentence_count"]),
+            }
+        )
+    agg = pd.DataFrame(agg_rows)
     agg.to_csv(output_dir / "amr_speech_metrics.csv", index=False)
 
-    print(f"Saved sentence AMR metrics: {output_dir / 'amr_sentence_metrics.csv.gz'}")
+    print(f"Saved sentence AMR metrics: {sentence_out}")
     print(f"Saved speech AMR metrics: {output_dir / 'amr_speech_metrics.csv'}")
     print(f"Saved penman directory: {amr_dir}")
 

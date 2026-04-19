@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+
+# Python environments
+.venv/
+venv/
+
+# Runtime data and generated artifacts
+data/processed/*.csv
+data/processed/*.csv.gz
+data/processed/*.npy
+data/processed/w2v_models/*.model
+data/processed/amr_penman/*.penman
+
+student1_lexical/*.csv
+student1_lexical/*.png
+student2_syntactic/*.csv
+student2_syntactic/*.png
+student3_semantic/*.csv
+student3_semantic/*.png
+
+integration/*.csv
+outputs/*.csv
+outputs/*.json
+outputs/figures/
+
+# Keep these curated files tracked
+!student3_semantic/target_words.txt
+!student3_semantic/target_words_smoke.txt
+!student3_semantic/target_words_full.txt
