@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import sys
 from pathlib import Path
 
 import pandas as pd
 import spacy
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from preprocessing.utils import ensure_dir
 

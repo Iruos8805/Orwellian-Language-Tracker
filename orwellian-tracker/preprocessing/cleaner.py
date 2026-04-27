@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from preprocessing.utils import ensure_dir, year_to_decade
 
@@ -40,6 +45,41 @@ def clean_text(text: str, procedural_phrases: list[str]) -> str:
     lowered = re.sub(r"[^a-z0-9\s'\-]", " ", lowered)
     lowered = re.sub(r"\s+", " ", lowered).strip()
     return lowered
+
+
+def year_to_period_label(year: int, bin_edges: list[tuple[int, int]]) -> str:
+    for start, end in bin_edges:
+        if start <= year <= end:
+            return f"{start}-{end}"
+    return year_to_decade(year)
+
+
+def parse_year_bins(spec: str) -> list[tuple[int, int]]:
+    chunks = [c.strip() for c in str(spec).split(",") if c.strip()]
+    out = []
+    for ch in chunks:
+        if "-" not in ch:
+            continue
+        left, right = ch.split("-", 1)
+        if left.strip().isdigit() and right.strip().isdigit():
+            a, b = int(left.strip()), int(right.strip())
+            if a <= b:
+                out.append((a, b))
+    return out
+
+
+def apply_bin_mode(df: pd.DataFrame, mode: str, bin_edges: list[tuple[int, int]]) -> pd.DataFrame:
+    mode = (mode or "decade").strip().lower()
+    if mode == "year":
+        df["decade"] = df["year"].astype(int).astype(str)
+        return df
+    if mode == "custom":
+        if not bin_edges:
+            raise ValueError("--bin-mode custom requires --year-bins")
+        df["decade"] = df["year"].map(lambda y: year_to_period_label(int(y), bin_edges))
+        return df
+    df["decade"] = df["year"].map(year_to_decade)
+    return df
 
 
 def word_count(text: str) -> int:
@@ -121,6 +161,10 @@ def build_cleaned_corpus(
     limit: int = 0,
     sample_per_congress: int = 0,
     congress_filter: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
+    bin_edges: list[tuple[int, int]] | None = None,
+    bin_mode: str = "decade",
 ) -> pd.DataFrame:
     descr_files = sorted(hein_dir.glob("descr_*.txt"))
     congresses = [f.stem.split("_")[-1] for f in descr_files]
@@ -152,35 +196,42 @@ def build_cleaned_corpus(
     df["clean_text"] = df["raw_text"].map(lambda t: clean_text(t, procedural_phrases))
     df["clean_word_count"] = df["clean_text"].map(word_count)
     df["too_short"] = df["clean_word_count"] < 50
+
+    if min_year is not None:
+        df = df[df["year"] >= int(min_year)].copy()
+    if max_year is not None:
+        df = df[df["year"] <= int(max_year)].copy()
+    df = apply_bin_mode(df, bin_mode, bin_edges or [])
+
     return df
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Clean and decade-bin Hein Daily speeches."
-    )
-    parser.add_argument("--hein-dir", type=Path, required=True)
-    parser.add_argument("--vocab-procedural", type=Path, default=None)
-    parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
-    parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--sample-per-congress", type=int, default=0)
-    parser.add_argument("--congress-list", default="")
-    args = parser.parse_args()
+def list_congresses(hein_dir: Path, congress_filter: list[str] | None = None) -> list[str]:
+    descr_files = sorted(hein_dir.glob("descr_*.txt"))
+    congresses = [f.stem.split("_")[-1] for f in descr_files]
+    if congress_filter:
+        wanted = set(congress_filter)
+        congresses = [c for c in congresses if c in wanted]
+    return congresses
 
-    output_dir = ensure_dir(args.output_dir)
-    procedural_phrases = load_procedural_phrases(args.vocab_procedural)
 
-    congress_filter = [c.strip() for c in args.congress_list.split(",") if c.strip()]
-    df = build_cleaned_corpus(
-        args.hein_dir,
-        procedural_phrases,
-        limit=args.limit,
-        sample_per_congress=args.sample_per_congress,
-        congress_filter=congress_filter,
-    )
-
-    excluded = df[df["too_short"]].copy()
-    included = df[~df["too_short"]].copy()
+def stream_cleaned_outputs(
+    hein_dir: Path,
+    procedural_phrases: list[str],
+    output_dir: Path,
+    limit: int = 0,
+    sample_per_congress: int = 0,
+    congress_filter: list[str] | None = None,
+    min_year: int | None = None,
+    max_year: int | None = None,
+    bin_edges: list[tuple[int, int]] | None = None,
+    bin_mode: str = "decade",
+) -> tuple[int, int]:
+    csv_kwargs = {
+        "quoting": csv.QUOTE_MINIMAL,
+        "quotechar": '"',
+        "escapechar": "\\",
+    }
 
     base_cols = [
         "speech_id",
@@ -195,23 +246,145 @@ def main() -> None:
         "state",
         "clean_word_count",
     ]
-    for col in base_cols:
-        if col not in included.columns:
-            included[col] = pd.NA
 
-    included[base_cols].to_csv(output_dir / "cleaned_speeches.csv", index=False)
-    excluded[[c for c in base_cols if c in excluded.columns]].to_csv(
-        output_dir / "excluded_short_speeches.csv", index=False
+    cleaned_out = output_dir / "cleaned_speeches.csv"
+    excluded_out = output_dir / "excluded_short_speeches.csv"
+    for decade_path in output_dir.glob("decade_*.csv"):
+        decade_path.unlink()
+    for path in [cleaned_out, excluded_out]:
+        if path.exists():
+            path.unlink()
+
+    decade_written: set[str] = set()
+    congresses = list_congresses(hein_dir, congress_filter)
+    remaining = limit if limit and limit > 0 else None
+    included_total = 0
+    excluded_total = 0
+
+    for congress in congresses:
+        frame = read_congress_bundle(hein_dir, congress)
+        if frame.empty:
+            continue
+
+        if sample_per_congress and sample_per_congress > 0:
+            frame = frame.head(sample_per_congress).copy()
+
+        if remaining is not None:
+            if remaining <= 0:
+                break
+            frame = frame.head(remaining).copy()
+            remaining -= len(frame)
+
+        frame["raw_text"] = frame["speech"].fillna("").astype(str)
+        frame["clean_text"] = frame["raw_text"].map(
+            lambda t: clean_text(t, procedural_phrases)
+        )
+        frame["clean_word_count"] = frame["clean_text"].map(word_count)
+        frame["too_short"] = frame["clean_word_count"] < 50
+
+        if min_year is not None:
+            frame = frame[frame["year"] >= int(min_year)].copy()
+        if max_year is not None:
+            frame = frame[frame["year"] <= int(max_year)].copy()
+        frame = apply_bin_mode(frame, bin_mode, bin_edges or [])
+
+        included = frame[~frame["too_short"]].copy()
+        excluded = frame[frame["too_short"]].copy()
+
+        for col in base_cols:
+            if col not in included.columns:
+                included[col] = pd.NA
+            if col not in excluded.columns:
+                excluded[col] = pd.NA
+
+        if not included.empty:
+            included[base_cols].to_csv(
+                cleaned_out,
+                index=False,
+                mode="a",
+                header=not cleaned_out.exists(),
+                **csv_kwargs,
+            )
+            included_total += len(included)
+
+            for decade, sub in included.groupby("decade"):
+                decade_file = output_dir / f"decade_{decade}.csv"
+                sub[
+                    [
+                        "speech_id",
+                        "year",
+                        "speaker_id",
+                        "raw_text",
+                        "clean_text",
+                        "decade",
+                    ]
+                ].to_csv(
+                    decade_file,
+                    index=False,
+                    mode="a",
+                    header=(decade not in decade_written and not decade_file.exists()),
+                    **csv_kwargs,
+                )
+                decade_written.add(str(decade))
+
+        if not excluded.empty:
+            excluded[base_cols].to_csv(
+                excluded_out,
+                index=False,
+                mode="a",
+                header=not excluded_out.exists(),
+                **csv_kwargs,
+            )
+            excluded_total += len(excluded)
+
+        del frame, included, excluded
+
+        if remaining is not None and remaining <= 0:
+            break
+
+    if included_total == 0 and excluded_total == 0:
+        raise FileNotFoundError("No valid descr/speeches bundles found in hein directory.")
+
+    return included_total, excluded_total
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Clean and decade-bin Hein Daily speeches."
+    )
+    parser.add_argument("--hein-dir", type=Path, required=True)
+    parser.add_argument("--vocab-procedural", type=Path, default=None)
+    parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--sample-per-congress", type=int, default=0)
+    parser.add_argument("--congress-list", default="")
+    parser.add_argument("--min-year", type=int, default=0)
+    parser.add_argument("--max-year", type=int, default=0)
+    parser.add_argument("--year-bins", default="")
+    parser.add_argument("--bin-mode", default="decade", choices=["decade", "year", "custom"])
+    args = parser.parse_args()
+
+    output_dir = ensure_dir(args.output_dir)
+    procedural_phrases = load_procedural_phrases(args.vocab_procedural)
+
+    congress_filter = [c.strip() for c in args.congress_list.split(",") if c.strip()]
+    bin_edges = parse_year_bins(args.year_bins)
+    included_count, excluded_count = stream_cleaned_outputs(
+        args.hein_dir,
+        procedural_phrases,
+        output_dir=output_dir,
+        limit=args.limit,
+        sample_per_congress=args.sample_per_congress,
+        congress_filter=congress_filter,
+        min_year=(args.min_year if args.min_year > 0 else None),
+        max_year=(args.max_year if args.max_year > 0 else None),
+        bin_edges=bin_edges,
+        bin_mode=args.bin_mode,
     )
 
-    for decade, sub in included.groupby("decade"):
-        sub[
-            ["speech_id", "year", "speaker_id", "raw_text", "clean_text", "decade"]
-        ].to_csv(output_dir / f"decade_{decade}.csv", index=False)
-
     print(f"Saved cleaned corpus: {output_dir / 'cleaned_speeches.csv'}")
-    print(f"Included speeches: {len(included):,}")
-    print(f"Excluded short speeches: {len(excluded):,}")
+    print(f"Included speeches: {included_count:,}")
+    print(f"Excluded short speeches: {excluded_count:,}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,0 @@
-decade,model_path,vocab_size
-1980s,data/processed/w2v_models/w2v_1980s.model,117
-1990s,data/processed/w2v_models/w2v_1990s.model,117
-2010s,data/processed/w2v_models/w2v_2010s.model,337

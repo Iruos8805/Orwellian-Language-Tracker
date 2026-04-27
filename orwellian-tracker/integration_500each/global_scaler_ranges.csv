@@ -1,0 +1,4 @@
+metric,min,max
+Diversity_loss,0.0,0.0207314268262754
+Logic_flat,0.0,0.0237955115353946
+Drift_rate,0.0,1.0

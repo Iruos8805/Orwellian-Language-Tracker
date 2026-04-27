@@ -1,0 +1,5 @@
+AMR enabled: True
+CUDA available: True
+Saved sentence AMR metrics: data/processed_500each/amr_sentence_metrics.csv
+Saved speech AMR metrics: data/processed_500each/amr_speech_metrics.csv
+Saved penman directory: data/processed_500each/amr_penman

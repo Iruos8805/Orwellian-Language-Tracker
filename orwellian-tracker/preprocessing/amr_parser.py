@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 import multiprocessing as mp
+import sys
 from pathlib import Path
 
 import networkx as nx
 import pandas as pd
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from preprocessing.utils import ensure_dir
 

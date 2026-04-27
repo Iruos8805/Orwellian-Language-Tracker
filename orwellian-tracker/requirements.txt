@@ -17,3 +17,5 @@ plotly
 streamlit
 torch
 tqdm
+Pillow>=9.1.0,<11
+protobuf>=3.20,<5

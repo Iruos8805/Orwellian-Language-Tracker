@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from pathlib import Path
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import pandas as pd
@@ -16,6 +21,21 @@ def run_contextual_embeddings(
     model_name: str = "roberta-base",
     batch_size: int = 32,
 ):
+    if os.environ.get("HF_TOKEN") and not os.environ.get("HUGGINGFACE_HUB_TOKEN"):
+        os.environ["HUGGINGFACE_HUB_TOKEN"] = os.environ["HF_TOKEN"]
+
+    try:
+        from PIL import Image
+
+        if not hasattr(Image, "Resampling"):
+            raise RuntimeError(
+                "Pillow version is too old for current transformers; upgrade Pillow to >=9.1.0."
+            )
+    except ImportError as exc:
+        raise RuntimeError(
+            "Pillow is required for contextual embeddings; install or upgrade Pillow."
+        ) from exc
+
     from transformers import AutoModel, AutoTokenizer
     import torch
 
@@ -24,7 +44,8 @@ def run_contextual_embeddings(
     model = AutoModel.from_pretrained(model_name)
     model.eval()
 
-    speech_vectors: dict[str, list[np.ndarray]] = {}
+    speech_sums: dict[str, np.ndarray] = {}
+    speech_counts: dict[str, int] = {}
 
     texts = sent_df["sentence_text"].fillna("").astype(str).tolist()
     speech_ids = sent_df["speech_id"].astype(str).tolist()
@@ -43,12 +64,17 @@ def run_contextual_embeddings(
             out = model(**enc)
             emb = out.last_hidden_state[:, 0, :].cpu().numpy()
         for sid, vec in zip(batch_speech, emb):
-            speech_vectors.setdefault(sid, []).append(vec)
+            if sid in speech_sums:
+                speech_sums[sid] += vec
+                speech_counts[sid] += 1
+            else:
+                speech_sums[sid] = vec.astype(np.float64)
+                speech_counts[sid] = 1
 
     out_dir = ensure_dir(output_dir / "roberta_embeddings")
     index_rows = []
-    for sid, vecs in speech_vectors.items():
-        arr = np.mean(np.vstack(vecs), axis=0)
+    for sid, vec_sum in speech_sums.items():
+        arr = (vec_sum / max(speech_counts.get(sid, 1), 1)).astype(np.float32)
         out_path = out_dir / f"{sid}.npy"
         np.save(out_path, arr)
         index_rows.append({"speech_id": sid, "embedding_path": str(out_path)})
@@ -107,6 +133,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
     parser.add_argument("--skip-contextual", action="store_true")
     parser.add_argument("--skip-w2v", action="store_true")
+    parser.add_argument("--contextual-batch-size", type=int, default=32)
+    parser.add_argument(
+        "--contextual-strict",
+        action="store_true",
+        help="Fail fast if contextual embedding stage errors; default is warn-and-continue.",
+    )
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -115,7 +147,16 @@ def main() -> None:
     cleaned_df.to_csv(output_dir / "cleaned_speeches.csv", index=False)
 
     if not args.skip_contextual:
-        run_contextual_embeddings(args.sentences_csv, output_dir)
+        try:
+            run_contextual_embeddings(
+                args.sentences_csv,
+                output_dir,
+                batch_size=max(int(args.contextual_batch_size), 1),
+            )
+        except Exception as exc:
+            if args.contextual_strict:
+                raise
+            print(f"Warning: contextual embedding stage skipped due to error: {exc}")
     if not args.skip_w2v:
         run_temporal_w2v(args.tokens_csv, output_dir)
 

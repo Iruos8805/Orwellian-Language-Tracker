@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,6 +33,10 @@ def main() -> None:
     sem = pd.read_csv(args.semantic)
     idx = pd.read_csv(args.index)
     party = pd.read_csv(args.party)
+
+    if lex.empty or syn.empty or sem.empty or idx.empty:
+        print("Warning: one or more input score tables are empty; skipping figure generation.")
+        return
 
     x_lex_labels = lex["decade"].astype(str).to_numpy()
     x_lex = np.arange(len(x_lex_labels))
@@ -62,13 +70,15 @@ def main() -> None:
     fig.savefig(out / "three_panel_trends.png", dpi=180)
     plt.close(fig)
 
-    pivot = party.pivot(index="party", columns="decade", values="Newspeak_Index")
-    plt.figure(figsize=(12, 4))
-    sns.heatmap(pivot, cmap="YlOrRd", annot=True, fmt=".3f")
-    plt.title("Newspeak index heatmap by party")
-    plt.tight_layout()
-    plt.savefig(out / "newspeak_heatmap_party.png", dpi=180)
-    plt.close()
+    if not party.empty:
+        pivot = party.pivot(index="party", columns="decade", values="Newspeak_Index")
+        if not pivot.empty:
+            plt.figure(figsize=(12, 4))
+            sns.heatmap(pivot, cmap="YlOrRd", annot=True, fmt=".3f")
+            plt.title("Newspeak index heatmap by party")
+            plt.tight_layout()
+            plt.savefig(out / "newspeak_heatmap_party.png", dpi=180)
+            plt.close()
 
     plt.figure(figsize=(12, 5))
     x_idx_labels = idx["decade"].astype(str).to_numpy()

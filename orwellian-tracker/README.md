@@ -117,6 +117,14 @@ python visualization/plots.py \
   --output-dir outputs/figures
 ```
 
+## Stability notes for large runs
+
+- `preprocessing/cleaner.py` now writes outputs congress-by-congress to reduce peak RAM usage on full-corpus runs.
+- To prototype safely before full scale, use `--sample-per-congress 10` in cleaner and raise later.
+- `preprocessing/embedder.py` now validates Pillow/transformers compatibility before loading RoBERTa and warns (instead of aborting) if contextual embedding fails; use `--contextual-strict` to fail fast.
+- If semantic output is empty, `integration/newspeak_index.py` now writes empty output artifacts with a warning instead of raising a scaler exception.
+- `student3_semantic/compute_semantic.py` now uses more practical defaults (`--min-shared-vocab 500`, `--min-word-count 5`) and supports `--auto-target-fallback` for robust full runs.
+
 Dashboard:
 
 ```bash

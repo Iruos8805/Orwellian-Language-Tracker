@@ -1,0 +1,3 @@
+Saved tokens: data/processed_500each/token_records.csv
+Saved sentences: data/processed_500each/sentence_records.csv
+Saved speech stats: data/processed_500each/speech_token_stats.csv

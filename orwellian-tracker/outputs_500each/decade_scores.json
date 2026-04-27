@@ -1,0 +1,32 @@
+{
+  "1990s": {
+    "Diversity_loss": 0.5099304173221196,
+    "Logic_flat": 1.0,
+    "Drift_rate": 0.0,
+    "Diversity_loss_raw": 0.0105715851332056,
+    "Logic_flat_raw": 0.0237955115353946,
+    "Drift_rate_raw": 0.0,
+    "Time": 13,
+    "Newspeak_Index": 0.0
+  },
+  "2000s": {
+    "Diversity_loss": 1.0,
+    "Logic_flat": 0.0,
+    "Drift_rate": 0.5940918044468201,
+    "Diversity_loss_raw": 0.0207314268262754,
+    "Logic_flat_raw": 0.0,
+    "Drift_rate_raw": 0.5940918044468201,
+    "Time": 14,
+    "Newspeak_Index": 0.04243512888905858
+  },
+  "2010s": {
+    "Diversity_loss": 0.0,
+    "Logic_flat": 0.7403152781702439,
+    "Drift_rate": 1.0,
+    "Diversity_loss_raw": 0.0,
+    "Logic_flat_raw": 0.0176161807415289,
+    "Drift_rate_raw": 1.0,
+    "Time": 15,
+    "Newspeak_Index": 0.04935435187801626
+  }
+}

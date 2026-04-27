@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 from typing import Iterable
 
 
 DECADE_ORDER = [f"{year}s" for year in range(1870, 2020, 10)]
+
+
+def label_start_year(label: str) -> int:
+    m = re.search(r"(\d{4})", str(label))
+    return int(m.group(1)) if m else 9999
+
+
+def sort_labels(labels: Iterable[str]) -> list[str]:
+    uniq = sorted({str(x) for x in labels if str(x) and str(x) != "nan"}, key=label_start_year)
+    return uniq
 
 
 def ensure_dir(path: str | Path) -> Path:
