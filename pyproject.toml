@@ -1,0 +1,63 @@
+[project]
+name = "orwellian-language-tracker"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "spacy>=3.7",
+    "nltk",
+    "textstat",
+    "amrlib",
+    "amrlib[spring]",
+    "networkx",
+    "transformers>=5.3.0",
+    "sentence-transformers",
+    "gensim",
+    "scikit-learn",
+    "umap-learn",
+    "pandas",
+    "numpy",
+    "matplotlib",
+    "seaborn",
+    "plotly",
+    "streamlit",
+    "tqdm",
+    "black>=26.3.1",
+    "Pillow>=9.1.0,<11",
+    "protobuf>=3.20,<5",
+]
+
+[project.optional-dependencies]
+rocm = [
+  "torch",
+  "pytorch-triton-rocm",
+]
+cu130 = [
+  "torch",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "rocm" },
+    { extra = "cu130" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-rocm", extra = "rocm" },
+  { index = "pytorch-cu130", extra = "cu130" },
+]
+pytorch-triton-rocm = { index = "pytorch-rocm" }
+
+# AMD
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.2"
+explicit = true
+
+# NVIDIA
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
