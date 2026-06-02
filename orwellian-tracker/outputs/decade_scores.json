@@ -1,16 +1,32 @@
 {
   "1990s": {
-    "Diversity_loss": 0.0,
-    "Logic_flat": 1.0,
-    "Drift_rate": 0.0,
+    "Diversity_loss": 0.0395056879479827,
+    "Logic_flat": 0.022724593483864,
+    "Drift_rate": 0.2240468310304434,
+    "Diversity_loss_raw": 0.0395056879479827,
+    "Logic_flat_raw": 0.022724593483864,
+    "Drift_rate_raw": 0.2240468310304434,
     "Time": 13,
-    "Newspeak_Index": 0.0
+    "Newspeak_Index": 0.001072499796072146
+  },
+  "2000s": {
+    "Diversity_loss": 0.0415750166950729,
+    "Logic_flat": 0.0106658520506942,
+    "Drift_rate": 0.2248341221184957,
+    "Diversity_loss_raw": 0.0415750166950729,
+    "Logic_flat_raw": 0.0106658520506942,
+    "Drift_rate_raw": 0.2248341221184957,
+    "Time": 14,
+    "Newspeak_Index": 0.0008389664187972934
   },
   "2010s": {
-    "Diversity_loss": 0.9999999999999999,
-    "Logic_flat": 0.0,
-    "Drift_rate": 1.0,
+    "Diversity_loss": 0.0,
+    "Logic_flat": 0.0226343967882552,
+    "Drift_rate": 0.2704994884095614,
+    "Diversity_loss_raw": 0.0,
+    "Logic_flat_raw": 0.0226343967882552,
+    "Drift_rate_raw": 0.2704994884095614,
     "Time": 15,
-    "Newspeak_Index": 0.06666666666666667
+    "Newspeak_Index": 0.0004081728501121367
   }
 }

@@ -22,6 +22,11 @@ def main() -> None:
     parser.add_argument("--semantic", type=Path, required=True)
     parser.add_argument("--index", type=Path, required=True)
     parser.add_argument("--party", type=Path, required=True)
+    parser.add_argument(
+        "--semantic-words",
+        type=Path,
+        default=Path("student3_semantic/drift_scores.csv"),
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/figures"))
     args = parser.parse_args()
 
@@ -33,6 +38,11 @@ def main() -> None:
     sem = pd.read_csv(args.semantic)
     idx = pd.read_csv(args.index)
     party = pd.read_csv(args.party)
+    drift_words = (
+        pd.read_csv(args.semantic_words)
+        if args.semantic_words.exists()
+        else pd.DataFrame()
+    )
 
     if lex.empty or syn.empty or sem.empty or idx.empty:
         print("Warning: one or more input score tables are empty; skipping figure generation.")
@@ -90,6 +100,54 @@ def main() -> None:
     plt.tight_layout()
     plt.savefig(out / "newspeak_index_line.png", dpi=180)
     plt.close()
+
+    if not drift_words.empty and {"decade_from", "decade", "word", "cosine_drift"}.issubset(
+        drift_words.columns
+    ):
+        transitions = [
+            ("1990s", "2000s"),
+            ("2000s", "2010s"),
+        ]
+        drift_words["decade_from"] = drift_words["decade_from"].astype(str)
+        drift_words["decade"] = drift_words["decade"].astype(str)
+        mask = drift_words.apply(
+            lambda r: (r["decade_from"], r["decade"]) in transitions, axis=1
+        )
+        window = drift_words[mask].copy()
+        if not window.empty:
+            top = (
+                window.groupby("word", as_index=False)["cosine_drift"]
+                .sum()
+                .sort_values("cosine_drift", ascending=False)
+                .head(12)
+            )
+            plt.figure(figsize=(10, 6))
+            plt.barh(top["word"].astype(str), top["cosine_drift"].to_numpy())
+            plt.gca().invert_yaxis()
+            plt.xlabel("Cumulative drift (1990s→2010s)")
+            plt.title("Top semantic shifts across 1990s–2010s")
+            plt.tight_layout()
+            plt.savefig(out / "semantic_shift_words.png", dpi=180)
+            plt.close()
+
+            top_words = top["word"].astype(str).tolist()[:6]
+            trend = (
+                window[window["word"].isin(top_words)]
+                .groupby(["word", "decade"], as_index=False)["cosine_drift"]
+                .mean()
+            )
+            plt.figure(figsize=(10, 6))
+            for w in top_words:
+                sub = trend[trend["word"] == w]
+                x = np.arange(len(sub["decade"]))
+                plt.plot(x, sub["cosine_drift"].to_numpy(), marker="o", label=w)
+                plt.xticks(x, sub["decade"].astype(str).to_numpy(), rotation=45)
+            plt.ylabel("Cosine drift")
+            plt.title("Drift trajectories for top shifting words")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(out / "semantic_shift_trajectories.png", dpi=180)
+            plt.close()
 
     print(f"Saved figures to: {out}")
 

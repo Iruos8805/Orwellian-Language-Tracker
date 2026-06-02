@@ -39,6 +39,107 @@ def model_for_decade(w2v_dir: Path, decade: str) -> Word2Vec | None:
     return Word2Vec.load(str(path))
 
 
+def write_neighbor_shifts(
+    w2v_dir: Path,
+    targets: list[str],
+    decade_from: str,
+    decade_to: str,
+    topn: int,
+    output_path: Path,
+) -> None:
+    m1 = model_for_decade(w2v_dir, decade_from)
+    m2 = model_for_decade(w2v_dir, decade_to)
+    if m1 is None or m2 is None:
+        pd.DataFrame(
+            columns=["word", "decade_from", "neighbors_from", "decade_to", "neighbors_to"]
+        ).to_csv(output_path, index=False)
+        return
+
+    rows = []
+    for word in targets:
+        if word not in m1.wv.key_to_index or word not in m2.wv.key_to_index:
+            continue
+        try:
+            n1 = [w for w, _ in m1.wv.most_similar(word, topn=topn)]
+            n2 = [w for w, _ in m2.wv.most_similar(word, topn=topn)]
+        except Exception:
+            continue
+        rows.append(
+            {
+                "word": word,
+                "decade_from": decade_from,
+                "neighbors_from": ", ".join(n1),
+                "decade_to": decade_to,
+                "neighbors_to": ", ".join(n2),
+            }
+        )
+
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+
+
+def write_shift_summary(
+    drift: pd.DataFrame,
+    neighbor_path: Path,
+    decade_from: str,
+    decade_to: str,
+    output_path: Path,
+) -> None:
+    if drift.empty:
+        pd.DataFrame(
+            columns=[
+                "word",
+                "decade_from",
+                "decade_to",
+                "shift_score",
+                "neighbors_from",
+                "neighbors_to",
+            ]
+        ).to_csv(output_path, index=False)
+        return
+
+    drift = drift.copy()
+    drift["decade_from"] = drift["decade_from"].astype(str)
+    drift["decade"] = drift["decade"].astype(str)
+    transitions = [(decade_from, "2000s"), ("2000s", decade_to)]
+    window = drift[drift.apply(lambda r: (r["decade_from"], r["decade"]) in transitions, axis=1)]
+
+    if window.empty:
+        pd.DataFrame(
+            columns=[
+                "word",
+                "decade_from",
+                "decade_to",
+                "shift_score",
+                "neighbors_from",
+                "neighbors_to",
+            ]
+        ).to_csv(output_path, index=False)
+        return
+
+    scores = (
+        window.groupby("word", as_index=False)["cosine_drift"]
+        .sum()
+        .rename(columns={"cosine_drift": "shift_score"})
+    )
+
+    if neighbor_path.exists():
+        neighbors = pd.read_csv(neighbor_path)
+        neighbors["decade_from"] = neighbors["decade_from"].astype(str)
+        neighbors["decade_to"] = neighbors["decade_to"].astype(str)
+        neighbors = neighbors[(neighbors["decade_from"] == decade_from) & (neighbors["decade_to"] == decade_to)]
+        out = scores.merge(neighbors, on="word", how="left")
+        out = out[["word", "decade_from", "decade_to", "shift_score", "neighbors_from", "neighbors_to"]]
+    else:
+        out = scores.copy()
+        out["decade_from"] = decade_from
+        out["decade_to"] = decade_to
+        out["neighbors_from"] = ""
+        out["neighbors_to"] = ""
+
+    out = out.sort_values("shift_score", ascending=False)
+    out.to_csv(output_path, index=False)
+
+
 def orthogonal_align(source: np.ndarray, target: np.ndarray) -> np.ndarray:
     src = source - source.mean(axis=0, keepdims=True)
     tgt = target - target.mean(axis=0, keepdims=True)
@@ -70,6 +171,48 @@ def deberta_proxy(cleaned: pd.DataFrame, word: str, early_mask, late_mask) -> fl
     return float(abs((late_rate or 0.0) - (early_rate or 0.0)))
 
 
+def deberta_seed_drift(index_path: Path) -> pd.DataFrame:
+    if not index_path.exists():
+        return pd.DataFrame(columns=["decade", "deberta_seed_drift"])
+    index = pd.read_csv(index_path)
+    if index.empty:
+        return pd.DataFrame(columns=["decade", "deberta_seed_drift"])
+    rows = []
+    for r in index.itertuples(index=False):
+        path = Path(r.embedding_path)
+        if not path.exists():
+            continue
+        vec = np.load(path)
+        if vec.ndim != 1:
+            continue
+        rows.append({"decade": str(r.decade), "word": str(r.word), "vec": vec})
+    if not rows:
+        return pd.DataFrame(columns=["decade", "deberta_seed_drift"])
+    df = pd.DataFrame(rows)
+    decades = sorted(df["decade"].unique(), key=lambda d: DECADE_ORDER.index(d) if d in DECADE_ORDER else 9999)
+    drift_rows = []
+    for i in range(1, len(decades)):
+        d_prev = decades[i - 1]
+        d_curr = decades[i]
+        prev = df[df["decade"] == d_prev].set_index("word")["vec"]
+        curr = df[df["decade"] == d_curr].set_index("word")["vec"]
+        shared = prev.index.intersection(curr.index)
+        if shared.empty:
+            continue
+        sims = []
+        for w in shared:
+            a = prev[w]
+            b = curr[w]
+            na = np.linalg.norm(a)
+            nb = np.linalg.norm(b)
+            if na == 0 or nb == 0:
+                continue
+            sims.append(float(np.dot(a, b) / (na * nb)))
+        if sims:
+            drift_rows.append({"decade": d_curr, "deberta_seed_drift": float(1.0 - np.mean(sims))})
+    return pd.DataFrame(drift_rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compute semantic drift metrics by decade."
@@ -78,8 +221,26 @@ def main() -> None:
     parser.add_argument("--w2v-dir", type=Path, required=True)
     parser.add_argument("--targets-file", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("student3_semantic"))
+    parser.add_argument(
+        "--deberta-seed-index",
+        type=Path,
+        default=Path("data/processed/deberta_embeddings/seed_word_index.csv"),
+    )
     parser.add_argument("--min-shared-vocab", type=int, default=2000)
     parser.add_argument("--min-word-count", type=int, default=20)
+    parser.add_argument("--neighbor-decade-from", default="1990s")
+    parser.add_argument("--neighbor-decade-to", default="2010s")
+    parser.add_argument("--neighbor-topn", type=int, default=5)
+    parser.add_argument(
+        "--neighbor-output",
+        type=Path,
+        default=Path("student3_semantic/word_shift_neighbors.csv"),
+    )
+    parser.add_argument(
+        "--neighbor-summary-output",
+        type=Path,
+        default=Path("student3_semantic/word_shift_summary.csv"),
+    )
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -157,6 +318,21 @@ def main() -> None:
         )
         print("No target words found across adjacent decade models after filtering.")
         print(f"Saved coverage report: {output_dir / 'word_coverage.csv'}")
+        write_neighbor_shifts(
+            args.w2v_dir,
+            targets,
+            str(args.neighbor_decade_from),
+            str(args.neighbor_decade_to),
+            max(args.neighbor_topn, 1),
+            args.neighbor_output,
+        )
+        write_shift_summary(
+            drift,
+            args.neighbor_output,
+            str(args.neighbor_decade_from),
+            str(args.neighbor_decade_to),
+            args.neighbor_summary_output,
+        )
         return
 
     early_mask = cleaned["year"].between(1873, 1920)
@@ -183,9 +359,29 @@ def main() -> None:
         deberta_drift=("deberta_drift", "mean"),
         cluster_migration=("cluster_migration", "mean"),
     )
+
+    seed_drift = deberta_seed_drift(args.deberta_seed_index)
+    if not seed_drift.empty:
+        decade = decade.merge(seed_drift, on="decade", how="left")
     scaler = MinMaxScaler()
     decade["Drift_rate_normalized"] = scaler.fit_transform(decade[["Drift_rate"]])
     decade.to_csv(output_dir / "drift_rate_by_decade.csv", index=False)
+
+    write_neighbor_shifts(
+        args.w2v_dir,
+        targets,
+        str(args.neighbor_decade_from),
+        str(args.neighbor_decade_to),
+        max(args.neighbor_topn, 1),
+        args.neighbor_output,
+    )
+    write_shift_summary(
+        drift,
+        args.neighbor_output,
+        str(args.neighbor_decade_from),
+        str(args.neighbor_decade_to),
+        args.neighbor_summary_output,
+    )
 
     plt.figure(figsize=(12, 5))
     decade_order = [d for d in DECADE_ORDER if d in set(drift["decade"].astype(str))]

@@ -1,3 +1,4 @@
-decade,Drift_rate,deberta_drift,cluster_migration,Drift_rate_normalized
-1990s,0.10293403267860413,,,0.0
-2010s,0.2270374298095703,,,1.0
+decade,Drift_rate,deberta_drift,cluster_migration,deberta_seed_drift,Drift_rate_normalized
+1990s,0.22404683103044348,,,0.34734874963760376,0.0
+2000s,0.22483412211849577,,,0.1731909215450287,0.01694824650454052
+2010s,0.27049948840956145,,,,1.0

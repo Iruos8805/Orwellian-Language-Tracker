@@ -226,6 +226,7 @@ def stream_cleaned_outputs(
     max_year: int | None = None,
     bin_edges: list[tuple[int, int]] | None = None,
     bin_mode: str = "decade",
+    balance_decades: bool = False,
 ) -> tuple[int, int]:
     csv_kwargs = {
         "quoting": csv.QUOTE_MINIMAL,
@@ -248,12 +249,15 @@ def stream_cleaned_outputs(
     ]
 
     cleaned_out = output_dir / "cleaned_speeches.csv"
+    balanced_out = output_dir / "cleaned_speeches_balanced.csv"
     excluded_out = output_dir / "excluded_short_speeches.csv"
     for decade_path in output_dir.glob("decade_*.csv"):
         decade_path.unlink()
     for path in [cleaned_out, excluded_out]:
         if path.exists():
             path.unlink()
+    if balanced_out.exists():
+        balanced_out.unlink()
 
     decade_written: set[str] = set()
     congresses = list_congresses(hein_dir, congress_filter)
@@ -345,6 +349,19 @@ def stream_cleaned_outputs(
     if included_total == 0 and excluded_total == 0:
         raise FileNotFoundError("No valid descr/speeches bundles found in hein directory.")
 
+    if balance_decades:
+        df = pd.read_csv(cleaned_out, dtype={"speech_id": str})
+        if not df.empty and "decade" in df.columns:
+            counts = df["decade"].value_counts()
+            if not counts.empty:
+                target = int(counts.min())
+                balanced = (
+                    df.groupby("decade", group_keys=False)
+                    .apply(lambda g: g.sample(n=target, random_state=42))
+                    .reset_index(drop=True)
+                )
+                balanced.to_csv(balanced_out, index=False)
+
     return included_total, excluded_total
 
 
@@ -362,6 +379,7 @@ def main() -> None:
     parser.add_argument("--max-year", type=int, default=0)
     parser.add_argument("--year-bins", default="")
     parser.add_argument("--bin-mode", default="decade", choices=["decade", "year", "custom"])
+    parser.add_argument("--balance-decades", action="store_true")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -380,9 +398,12 @@ def main() -> None:
         max_year=(args.max_year if args.max_year > 0 else None),
         bin_edges=bin_edges,
         bin_mode=args.bin_mode,
+        balance_decades=args.balance_decades,
     )
 
     print(f"Saved cleaned corpus: {output_dir / 'cleaned_speeches.csv'}")
+    if args.balance_decades:
+        print(f"Saved balanced corpus: {output_dir / 'cleaned_speeches_balanced.csv'}")
     print(f"Included speeches: {included_count:,}")
     print(f"Excluded short speeches: {excluded_count:,}")
 
