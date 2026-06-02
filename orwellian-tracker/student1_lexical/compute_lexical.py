@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from preprocessing.utils import DECADE_ORDER, ensure_dir, safe_corr
+from preprocessing.utils import DECADE_ORDER, ensure_dir, safe_corr, year_to_decade
 
 
 def compute_ttr(tokens: list[str]) -> float:
@@ -173,6 +173,8 @@ def main() -> None:
     output_dir = ensure_dir(args.output_dir)
 
     cleaned = pd.read_csv(args.cleaned_csv, dtype={"speech_id": str})
+    if "decade" not in cleaned.columns and "year" in cleaned.columns:
+        cleaned["decade"] = cleaned["year"].map(lambda year: year_to_decade(int(year)))
     tokens = pd.read_csv(args.tokens_csv, dtype={"speech_id": str})
 
     speech_scores = build_speech_scores(cleaned, tokens)

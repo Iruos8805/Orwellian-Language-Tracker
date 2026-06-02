@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from preprocessing.utils import ensure_dir
+from preprocessing.utils import ensure_dir, year_to_decade
 
 
 def main() -> None:
@@ -24,6 +24,8 @@ def main() -> None:
     speeches = pd.read_csv(
         args.cleaned_csv, dtype={"speech_id": str, "speaker_id": str}
     )
+    if "decade" not in speeches.columns and "year" in speeches.columns:
+        speeches["decade"] = speeches["year"].map(lambda year: year_to_decade(int(year)))
     idx = pd.read_csv(args.newspeak_csv)
 
     speech_index = speeches.merge(

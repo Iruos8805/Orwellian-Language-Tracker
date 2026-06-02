@@ -24,15 +24,17 @@ dependencies = [
     "black>=26.3.1",
     "Pillow>=9.1.0,<11",
     "protobuf>=3.20,<5",
+    "tiktoken>=0.13.0",
+    "sentencepiece>=0.2.1",
 ]
 
 [project.optional-dependencies]
 rocm = [
-  "torch",
+  "torch>=2.6",
   "pytorch-triton-rocm",
 ]
 cu130 = [
-  "torch",
+  "torch>=2.6",
 ]
 
 [tool.uv]
@@ -53,7 +55,7 @@ pytorch-triton-rocm = { index = "pytorch-rocm" }
 # AMD
 [[tool.uv.index]]
 name = "pytorch-rocm"
-url = "https://download.pytorch.org/whl/rocm6.2"
+url = "https://download.pytorch.org/whl/rocm6.2.4"
 explicit = true
 
 # NVIDIA

@@ -11,7 +11,7 @@ import spacy
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from preprocessing.utils import ensure_dir
+from preprocessing.utils import ensure_dir, year_to_decade
 
 
 def load_nlp(model_name: str):
@@ -80,6 +80,8 @@ def main() -> None:
             path.unlink()
 
     df = pd.read_csv(args.input_csv, dtype={"speech_id": str})
+    if "decade" not in df.columns and "year" in df.columns:
+        df["decade"] = df["year"].map(lambda year: year_to_decade(int(year)))
     if args.limit and args.limit > 0:
         df = df.head(args.limit)
 
@@ -137,7 +139,7 @@ def main() -> None:
             {
                 "speech_id": speech_id,
                 "year": row.year,
-                "decade": row.decade,
+                "decade": row.decade if hasattr(row, "decade") else year_to_decade(int(row.year)),
                 "total_tokens": total_tokens,
                 "unique_tokens": unique_tokens,
                 "hapax_count": hapax_count,

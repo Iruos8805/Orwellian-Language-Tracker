@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from gensim.models import Word2Vec
 
-from preprocessing.utils import ensure_dir
+from preprocessing.utils import ensure_dir, year_to_decade
 
 
 def _load_seed_words(path: Path | None) -> list[str]:
@@ -73,6 +73,8 @@ def run_deberta_embeddings(
     sent_df = sent_df.sort_values(["speech_id", "sentence_idx"], kind="stable")
 
     cleaned = pd.read_csv(cleaned_csv, dtype={"speech_id": str})
+    if "decade" not in cleaned.columns and "year" in cleaned.columns:
+        cleaned["decade"] = cleaned["year"].map(lambda year: year_to_decade(int(year)))
     speech_to_decade = {
         str(r.speech_id): str(r.decade) for r in cleaned[["speech_id", "decade"]].itertuples(index=False)
     }
@@ -207,7 +209,10 @@ def run_temporal_w2v(
 
     cleaned = pd.read_csv(
         output_dir / "cleaned_speeches.csv", dtype={"speech_id": str}
-    )[["speech_id", "decade"]]
+    )
+    if "decade" not in cleaned.columns and "year" in cleaned.columns:
+        cleaned["decade"] = cleaned["year"].map(lambda year: year_to_decade(int(year)))
+    cleaned = cleaned[["speech_id", "decade"]]
     tok = tok.merge(cleaned, on="speech_id", how="left")
 
     model_dir = ensure_dir(output_dir / "w2v_models")
@@ -260,13 +265,17 @@ def main() -> None:
     output_dir = ensure_dir(args.output_dir)
 
     cleaned_df = pd.read_csv(args.cleaned_csv, dtype={"speech_id": str})
+    if "decade" not in cleaned_df.columns and "year" in cleaned_df.columns:
+        cleaned_df["decade"] = cleaned_df["year"].map(
+            lambda year: year_to_decade(int(year))
+        )
     cleaned_df.to_csv(output_dir / "cleaned_speeches.csv", index=False)
 
     if not args.skip_contextual:
         try:
             run_deberta_embeddings(
                 args.sentences_csv,
-                args.cleaned_csv,
+                output_dir / "cleaned_speeches.csv",
                 output_dir,
                 model_name=str(args.contextual_model),
                 batch_size=max(int(args.contextual_batch_size), 1),
