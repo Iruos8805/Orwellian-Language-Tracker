@@ -28,3 +28,5 @@ outputs/figures/
 !student3_semantic/target_words.txt
 !student3_semantic/target_words_smoke.txt
 !student3_semantic/target_words_full.txt
+
+.env

@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OLT</title>
+  <link href="https://unpkg.com/nes.css@latest/css/nes.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #1a1a2e;
+      --bg-mid: #16213e;
+      --bg-card: #0f3460;
+      --accent-green: #92cc41;
+      --accent-yellow: #e8c547;
+      --accent-red: #ff6b6b;
+      --accent-blue: #52b0e8;
+      --text-white: #ffffff;
+      --border-glow: #92cc41;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-white);
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .site-header {
+      background: var(--bg-mid);
+      border-bottom: 4px solid var(--accent-green);
+      padding: 24px 32px 16px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .site-header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+      animation: scan 3s linear infinite;
+    }
+    @keyframes scan {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .header-badge {
+      display: inline-block;
+      background: var(--accent-green);
+      color: var(--bg-dark);
+      padding: 4px 12px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      animation: blink 1.2s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .site-header h1 {
+      font-size: 44px;
+      color: var(--accent-yellow);
+      text-shadow: 4px 4px 0 #b8860b, 0 0 20px rgba(232,197,71,0.4);
+      margin: 0 0 8px;
+      letter-spacing: 2px;
+      line-height: 1.05;
+    }
+    .site-header p {
+      font-size: 15px;
+      color: var(--accent-green);
+      margin: 0;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--bg-mid);
+      border: 4px solid var(--accent-green);
+      padding: 16px 12px;
+      text-align: center;
+      position: relative;
+      transition: transform 0.1s;
+    }
+    .stat-card:hover { transform: translate(-2px, -2px); }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border: 2px solid rgba(146,204,65,0.2);
+      pointer-events: none;
+    }
+
+    .stat-card .stat-label {
+      font-size: 12px;
+      color: var(--accent-green);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      display: block;
+      font-weight: 600;
+    }
+    .stat-card .stat-value {
+      font-size: 28px;
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .stat-card .stat-delta {
+      font-size: 12px;
+    }
+    .delta-neg { color: var(--accent-red); }
+    .delta-pos { color: var(--accent-green); }
+    .value-danger { color: var(--accent-red); }
+    .value-warn { color: var(--accent-yellow); }
+    .value-ok { color: var(--accent-green); }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 40px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--bg-card);
+    }
+    .section-header h2 {
+      font-size: 18px;
+      color: var(--accent-yellow);
+      margin: 0;
+      line-height: 1.2;
+    }
+    .section-tag {
+      font-size: 12px;
+      background: var(--bg-card);
+      color: var(--accent-blue);
+      padding: 3px 8px;
+      border: 2px solid var(--accent-blue);
+      font-weight: 700;
+    }
+
+    .plot-grid {
+      display: grid;
+      gap: 24px;
+    }
+    .plot-grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(580px, 1fr)); }
+    .plot-grid.cols-1 { grid-template-columns: 1fr; }
+
+    .plot-card {
+      background: var(--bg-mid);
+      border: 4px solid var(--bg-card);
+      padding: 0;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .plot-card:hover { border-color: var(--accent-green); }
+
+    .plot-card-header {
+      background: var(--bg-card);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--bg-dark);
+    }
+    .plot-card-header h3 {
+      font-size: 16px;
+      color: var(--accent-yellow);
+      margin: 0;
+      line-height: 1.3;
+    }
+    .plot-type-badge {
+      font-size: 11px;
+      background: rgba(146,204,65,0.15);
+      color: var(--accent-green);
+      border: 1px solid var(--accent-green);
+      padding: 2px 6px;
+      font-weight: 700;
+    }
+
+    .plot-body { padding: 16px; }
+
+    .plot-img-wrap {
+      background: #111827;
+      border: 2px solid var(--bg-dark);
+      text-align: center;
+      min-height: 360px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .plot-chart {
+      width: 100%;
+      min-height: 360px;
+    }
+
+    .plot-description {
+      margin-top: 12px;
+      padding: 12px;
+      background: rgba(15,52,96,0.6);
+      border-left: 4px solid var(--accent-blue);
+      font-size: 13px;
+      color: #c0c0d0;
+      line-height: 1.7;
+    }
+    .plot-description strong {
+      color: var(--accent-yellow);
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .insight-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .insight-chip {
+      font-size: 11px;
+      padding: 4px 8px;
+      border: 1px solid;
+      font-weight: 600;
+    }
+    .chip-red { color: var(--accent-red); border-color: var(--accent-red); background: rgba(255,107,107,0.1); }
+    .chip-green { color: var(--accent-green); border-color: var(--accent-green); background: rgba(146,204,65,0.1); }
+    .chip-yellow { color: var(--accent-yellow); border-color: var(--accent-yellow); background: rgba(232,197,71,0.1); }
+    .chip-blue { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(82,176,232,0.1); }
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-dark);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      gap: 24px;
+    }
+    #loading-screen h2 { font-size: 12px; color: var(--accent-green); }
+    .progress-bar-wrap {
+      width: 300px;
+      border: 4px solid var(--accent-green);
+      padding: 4px;
+    }
+    .progress-bar-inner {
+      height: 16px;
+      background: var(--accent-green);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .loading-msg { font-size: 13px; color: var(--accent-yellow); }
+
+    .site-footer {
+      margin-top: 60px;
+      border-top: 4px solid var(--bg-card);
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .nes-container {
+      background: var(--bg-mid) !important;
+      border-image-source: none !important;
+      border: 4px solid var(--bg-card) !important;
+    }
+    .nes-container.is-dark {
+      background: var(--bg-dark) !important;
+    }
+
+    .pixel-corner {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: var(--accent-green);
+    }
+
+    @media (max-width: 768px) {
+      .site-header h1 { font-size: 28px; }
+      .plot-grid.cols-2 { grid-template-columns: 1fr; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .plot-img-wrap { min-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <h2>► INITIALISING...</h2>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-inner" id="progress-bar"></div>
+  </div>
+  <span class="loading-msg" id="loading-msg">LOADING DATA MODULES...</span>
+</div>
+
+<header class="site-header">
+  <h1>ORWELLIAN LANGUAGE TRACKER</h1>
+  <p style="margin-top:8px;color:#666;">1950s – 2020s</p>
+</header>
+
+<main class="container" id="main-content" style="display:none;">
+
+  <div class="section-header">
+    <h2>◄ METRICS</h2>
+  </div>
+  <div class="stats-row" id="stats-row">
+
+  </div>
+
+  <div class="section-header">
+    <h2>◄ LEXICAL ANALYSIS</h2>
+  </div>
+  <div class="plot-grid cols-1">
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► MATTR HERO CHART // Lexical Diversity Over Time</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-hero-mattr" class="plot-chart" aria-label="MATTR Hero Chart"></div>
+        </div>
+        <div class="plot-description">
+          <strong>WHAT IS MATTR?</strong>
+          Moving-Average Type-Token Ratio measures vocabulary richness across a sliding window of tokens. A declining MATTR signal indicates a narrowing of vocabulary — fewer unique words used per unit of text. This is a core indicator of Newspeak-like simplification.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">↓ DECLINING TREND</span>
+            <span class="insight-chip chip-yellow">WINDOW: 50 TOKENS</span>
+            <span class="insight-chip chip-blue">CORPUS: POLITICAL SPEECHES</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plot-grid cols-2" style="margin-top:24px;">
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► DIVERSITY LOSS BY DECADE</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-diversity-loss" class="plot-chart" aria-label="Diversity Loss"></div>
+        </div>
+        <div class="plot-description">
+          <strong>DIVERSITY LOSS INDEX</strong>
+          Computed as (1 – MATTR). Higher bars = more vocabulary impoverishment. Color coding: <span style="color:#92cc41">GREEN</span> = healthy, <span style="color:#e8c547">YELLOW</span> = warning, <span style="color:#ff6b6b">RED</span> = critical.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">INVERTED MATTR</span>
+            <span class="insight-chip chip-yellow">THRESHOLD: 0.30 / 0.45</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► UNIFIED NEWSPEAK INDEX</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-newspeak-line" class="plot-chart" aria-label="Newspeak Index"></div>
+        </div>
+        <div class="plot-description">
+          <strong>COMPOSITE NEWSPEAK SCORE</strong>
+          Aggregated index combining lexical diversity loss, syntactic flattening, and semantic drift into a single 0–1 score. Higher = greater language control / simplification. Inspired by Orwell's concept of Newspeak in <em>1984</em>.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">ALARMING RISE POST-1990s</span>
+            <span class="insight-chip chip-blue">COMPOSITE SCORE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <h2>◄ DECAY TREND</h2>
+  </div>
+  <div class="plot-grid cols-1">
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► THREE-PANEL // Lexical · Syntactic · Semantic</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-three-panel" class="plot-chart" aria-label="Three Panel Trends"></div>
+        </div>
+        <div class="plot-description">
+          <strong>COMBINED DECAY SIGNAL</strong>
+          Three simultaneous dimensions of language simplification are tracked:
+          <br/>① <span style="color:#92cc41">LEXICAL</span>: MATTR and diversity loss — vocabulary breadth.
+          <br/>② <span style="color:#e8c547">SYNTACTIC</span>: AMR parse depth + logic flattening — sentence complexity.
+          <br/>③ <span style="color:#ff6b6b">SEMANTIC</span>: cosine drift rate — meaning change acceleration.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">ALL 3 PANELS DEGRADING</span>
+            <span class="insight-chip chip-yellow">CORRELATED TRENDS</span>
+            <span class="insight-chip chip-green">AMR: ABSTRACT MEANING REPR.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <h2>◄ POLITICAL PARTY BREAKDOWN</h2>
+  </div>
+  <div class="plot-grid cols-1">
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► NEWSPEAK HEATMAP — BY PARTY × DECADE</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-newspeak-heatmap" class="plot-chart" aria-label="Newspeak Heatmap"></div>
+        </div>
+        <div class="plot-description">
+          <strong>PARTY-LEVEL LANGUAGE CONTROL ANALYSIS</strong>
+          Each cell represents the Newspeak Index for a given party in a given decade. Darker cells indicate higher language simplification and control. Reveals which parties adopted simpler, more emotionally manipulative rhetoric over time.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">YlOrRd SCALE: LOW→HIGH</span>
+            <span class="insight-chip chip-blue">5 PARTIES TRACKED</span>
+            <span class="insight-chip chip-yellow">FRINGE PARTIES HIGHER</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <h2>◄ SEMANTIC DRIFT ANALYSIS</h2>
+  </div>
+  <div class="plot-grid cols-2">
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► TOP SHIFTING WORDS</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-semantic-bar" class="plot-chart" aria-label="Semantic Shift Bar"></div>
+        </div>
+        <div class="plot-description">
+          <strong>CUMULATIVE COSINE DRIFT: 1990s → 2010s</strong>
+          Words ranked by total change in their contextual embedding across the transition period. High drift = the word's meaning/usage context changed significantly — a hallmark of political language manipulation.
+          <div class="insight-row">
+            <span class="insight-chip chip-red">WORDS REPURPOSED</span>
+            <span class="insight-chip chip-yellow">EMBED: word2vec/FastText</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="plot-card">
+      <div class="plot-card-header">
+        <h3>► DRIFT TRAJECTORIES</h3>
+      </div>
+      <div class="plot-body">
+        <div class="plot-img-wrap">
+          <div id="plot-semantic-trajectories" class="plot-chart" aria-label="Semantic Trajectories"></div>
+        </div>
+        <div class="plot-description">
+          <strong>WORD-LEVEL DRIFT OVER TRANSITION PERIODS</strong>
+          Tracks how each top-drifting word evolved across consecutive decade boundaries. Steep rises indicate rapid meaning shifts — often coinciding with major political events, crises, or deliberate rhetorical campaigns.
+          <div class="insight-row">
+            <span class="insight-chip chip-blue">TOP 6 WORDS</span>
+            <span class="insight-chip chip-red">STEEP = FAST SHIFT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header" style="margin-top:48px;">
+    <h2>◄ METHODOLOGY</h2>
+  </div>
+  <div style="background:var(--bg-mid); border:4px solid var(--bg-card); padding:20px; font-size:14px; line-height:1.8; color:#ddd;">
+    <p style="color:var(--accent-yellow); font-size:15px; margin:0 0 12px; font-weight:700;">■ DATA PIPELINE OVERVIEW</p>
+    <p><span style="color:var(--accent-green); font-weight:700;">LEXICAL MODULE:</span> Uses MATTR (Moving-Average Type-Token Ratio) with a 50-token sliding window. Diversity Loss = 1 – MATTR. Source: political speech corpora tokenised via spaCy.</p>
+    <p><span style="color:var(--accent-green); font-weight:700;">SYNTACTIC MODULE:</span> AMR (Abstract Meaning Representation) parse depth measures sentence structural complexity. Logic_flat captures proportion of simple paratactic constructions vs complex hypotaxis.</p>
+    <p><span style="color:var(--accent-green); font-weight:700;">SEMANTIC MODULE:</span> Word2vec embeddings trained per-decade. Cosine drift between decade pairs measures meaning shift. Drift Rate = mean cosine distance of top-1000 political terms from prior decade centroid.</p>
+    <p><span style="color:var(--accent-green); font-weight:700;">NEWSPEAK INDEX:</span> Normalised composite: 0.4·(Diversity Loss) + 0.3·(Logic_flat) + 0.3·(Drift Rate). Score range: 0 (natural language) → 1 (fully controlled Newspeak).</p>
+  </div>
+
+</main>
+
+<script>
+  const PLOTLY_CONFIG = {
+    responsive: true,
+    displayModeBar: true,
+    displaylogo: false,
+  };
+
+  const STAT_DEFS = [
+    { key: "mattr_latest",    label: "MATTR SCORE",      deltaKey: "mattr_change",    suffix: "",   invert: false },
+    { key: "newspeak_latest", label: "NEWSPEAK INDEX",   deltaKey: "newspeak_change", suffix: "",   invert: true  },
+    { key: "drift_latest",    label: "SEMANTIC DRIFT",   deltaKey: null,              suffix: "",   invert: true  },
+    { key: "amr_change",      label: "AMR DEPTH Δ",      deltaKey: null,              suffix: "",   invert: false },
+  ];
+
+  function valueClass(val, invert) {
+    const v = Math.abs(val);
+    if (!invert) return v > 0.7 ? "value-ok" : v > 0.4 ? "value-warn" : "value-danger";
+    return v > 0.5 ? "value-danger" : v > 0.3 ? "value-warn" : "value-ok";
+  }
+
+  function deltaClass(val, invert) {
+    const rising = val > 0;
+    if (invert) return rising ? "delta-neg" : "delta-pos";
+    return rising ? "delta-pos" : "delta-neg";
+  }
+
+  function renderStats(stats) {
+    const row = document.getElementById("stats-row");
+    row.innerHTML = STAT_DEFS.map(def => {
+      const val = stats[def.key];
+      const delta = def.deltaKey ? stats[def.deltaKey] : null;
+      const vc = valueClass(val, def.invert);
+      const deltaHtml = delta !== null
+        ? `<span class="stat-delta ${deltaClass(delta, def.invert)}">${delta > 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(3)} TOTAL</span>`
+        : `<span class="stat-delta" style="color:#555">N/A</span>`;
+      return `
+        <div class="stat-card">
+          <span class="stat-label">${def.label}</span>
+          <span class="stat-value ${vc}">${val.toFixed(3)}</span>
+          ${deltaHtml}
+        </div>`;
+    }).join("");
+  }
+
+  const PLOT_MAP = {
+    "hero_mattr":           "plot-hero-mattr",
+    "three_panel":          "plot-three-panel",
+    "newspeak_heatmap":     "plot-newspeak-heatmap",
+    "newspeak_line":        "plot-newspeak-line",
+    "semantic_bar":         "plot-semantic-bar",
+    "semantic_trajectories":"plot-semantic-trajectories",
+    "diversity_loss":       "plot-diversity-loss",
+  };
+
+  async function loadDashboard() {
+    const bar = document.getElementById("progress-bar");
+    const msg = document.getElementById("loading-msg");
+    const msgs = [
+      "LOADING DATA MODULES...",
+      "COMPUTING LEXICAL SCORES...",
+      "RENDERING SYNTACTIC PANELS...",
+      "GENERATING SEMANTIC EMBEDDINGS...",
+      "BUILDING VISUALISATIONS...",
+    ];
+    let pct = 0;
+    const ticker = setInterval(() => {
+      pct = Math.min(pct + 4, 85);
+      bar.style.width = pct + "%";
+      msg.textContent = msgs[Math.floor(pct / 20)] || msgs[msgs.length - 1];
+    }, 120);
+
+    try {
+      const res = await fetch("/api/plots");
+      const data = await res.json();
+      clearInterval(ticker);
+      bar.style.width = "100%";
+      msg.textContent = "COMPLETE. LAUNCHING...";
+
+      setTimeout(async () => {
+        document.getElementById("loading-screen").style.display = "none";
+        document.getElementById("main-content").style.display = "block";
+
+        renderStats(data.stats);
+
+        for (const [key, plotId] of Object.entries(PLOT_MAP)) {
+          const plotData = data.plots[key];
+          const target = document.getElementById(plotId);
+          if (plotData && target) {
+            await Plotly.newPlot(target, plotData.data || [], plotData.layout || {}, PLOTLY_CONFIG);
+          }
+        }
+      }, 400);
+    } catch (e) {
+      clearInterval(ticker);
+      msg.textContent = "ERROR: " + e.message;
+      bar.style.background = "var(--accent-red)";
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

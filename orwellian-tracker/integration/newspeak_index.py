@@ -85,9 +85,8 @@ def main() -> None:
     ranges.to_csv(args.global_scaler_file, index=False)
 
     merged["Time"] = merged["decade"].map(decade_to_index)
-    merged["Score_raw"] = (
-        (merged["Diversity_loss"] + merged["Logic_flat"]) * merged["Drift_rate"]
-    ) / merged["Time"]
+
+    merged["Score_raw"] = (merged["Diversity_loss"] + merged["Logic_flat"]) * merged["Drift_rate"]
 
     baseline_decade = "1870s"
     if baseline_decade in set(merged["decade"].astype(str)):

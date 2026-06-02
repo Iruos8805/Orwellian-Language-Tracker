@@ -2,34 +2,34 @@
   "1990s": {
     "Diversity_loss": 0.0287126698055442,
     "Logic_flat": 0.0188942994583792,
-    "Drift_rate": 0.2863733532099888,
+    "Drift_rate": 0.285165426374852,
     "Diversity_loss_raw": 0.0287126698055442,
     "Logic_flat_raw": 0.0188942994583792,
-    "Drift_rate_raw": 0.2863733532099888,
+    "Drift_rate_raw": 0.285165426374852,
     "Time": 13,
-    "Score_raw": 0.0010487205710980473,
+    "Score_raw": 0.013575861688561189,
     "Newspeak_Index": 0.0
   },
   "2000s": {
     "Diversity_loss": 0.0282903513258696,
     "Logic_flat": 0.0170797433986312,
-    "Drift_rate": 0.2656930275689596,
+    "Drift_rate": 0.2600502385490242,
     "Diversity_loss_raw": 0.0282903513258696,
     "Logic_flat_raw": 0.0170797433986312,
-    "Drift_rate_raw": 0.2656930275689596,
+    "Drift_rate_raw": 0.2600502385490242,
     "Time": 14,
-    "Score_raw": 0.0008610369877459359,
-    "Newspeak_Index": -0.17896433857075972
+    "Score_raw": 0.011798503956098258,
+    "Newspeak_Index": -0.13092043608255857
   },
   "2010s": {
     "Diversity_loss": 0.0,
     "Logic_flat": 0.0297377866426593,
-    "Drift_rate": 0.2661489563232118,
+    "Drift_rate": 0.2688432877713984,
     "Diversity_loss_raw": 0.0,
     "Logic_flat_raw": 0.0297377866426593,
-    "Drift_rate_raw": 0.2661489563232118,
+    "Drift_rate_raw": 0.2688432877713984,
     "Time": 15,
-    "Score_raw": 0.0005276453918870747,
-    "Newspeak_Index": -0.496867510346811
+    "Score_raw": 0.0079948043320569,
+    "Newspeak_Index": -0.41110151860244726
   }
 }
