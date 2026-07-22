@@ -1,0 +1,143 @@
+# Orwellian Language Decay Tracker
+
+Longitudinal NLP pipeline for measuring linguistic pruning in U.S. Congressional speech.
+
+## Scope and data reality
+
+- The code supports the full historical window (1870s-2010s) when raw congress files are present.
+- In this workspace, `hein-daily` currently contains congress 97-114 (roughly 1981-2017), so produced decade outputs will be a subset of the full 15 bins.
+- `vocabulary/vocab.txt` in this workspace is an unlabeled bigram list (no year column), so year-level validation falls back to available congressional 2-gram files.
+
+## Runtime hardening defaults
+
+- AMR parser supports GPU enforcement with `--require-gpu` and sentence caps via `--max-sentences-per-speech`.
+- Tokenization and AMR stages stream to disk with `--flush-every` to avoid large RAM spikes.
+- Semantic drift uses orthogonal Procrustes alignment and emits `student3_semantic/word_coverage.csv` for auditability.
+- Integration writes raw and normalized pillar scores and stores global min/max ranges in `integration/global_scaler_ranges.csv`.
+
+## Repository layout
+
+```
+orwellian-tracker/
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── validation/
+├── preprocessing/
+├── student1_lexical/
+├── student2_syntactic/
+├── student3_semantic/
+├── integration/
+├── visualization/
+└── outputs/
+```
+
+## Install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_lg
+```
+
+## End-to-end run order
+
+Run from `orwellian-tracker/`.
+
+```bash
+python preprocessing/clean_hidden.py --root ../hein-daily
+
+python preprocessing/cleaner.py \
+  --hein-dir ../hein-daily \
+  --vocab-procedural ../vocabulary/vocabulary/procedural.txt \
+  --output-dir data/processed \
+  --sample-per-congress 5000 \
+  --balance-decades
+
+python preprocessing/tokenizer.py \
+  --input-csv data/processed/cleaned_speeches_balanced.csv \
+  --output-dir data/processed \
+  --spacy-model en_core_web_lg \
+  --flush-every 1000
+
+python preprocessing/amr_parser.py \
+  --sentences-csv data/processed/sentence_records.csv \
+  --output-dir data/processed \
+  --workers 2 \
+  --max-sentences-per-speech 10 \
+  --flush-every 1000 \
+  --require-gpu
+
+python preprocessing/embedder.py \
+  --cleaned-csv data/processed/cleaned_speeches_balanced.csv \
+  --sentences-csv data/processed/sentence_records.csv \
+  --tokens-csv data/processed/token_records.csv \
+  --output-dir data/processed \
+  --contextual-model microsoft/deberta-v3-base \
+  --seed-words-file student3_semantic/target_words_full.txt
+
+python student1_lexical/compute_lexical.py \
+  --cleaned-csv data/processed/cleaned_speeches_balanced.csv \
+  --tokens-csv data/processed/token_records.csv \
+  --hein-dir ../hein-daily \
+  --vocab-dir ../vocabulary/vocabulary \
+  --mattr-window 500 \
+  --output-dir student1_lexical
+
+python student2_syntactic/compute_syntactic.py \
+  --amr-metrics data/processed/amr_speech_metrics.csv \
+  --speech-stats data/processed/speech_token_stats.csv \
+  --sentence-embed-index data/processed/deberta_embeddings/sentence_cls_index.csv \
+  --output-dir student2_syntactic
+
+python student3_semantic/compute_semantic.py \
+  --cleaned-csv data/processed/cleaned_speeches_balanced.csv \
+  --w2v-dir data/processed/w2v_models \
+  --targets-file student3_semantic/target_words_full.txt \
+  --min-shared-vocab 2000 \
+  --min-word-count 20 \
+  --deberta-seed-index data/processed/deberta_embeddings/seed_word_index.csv \
+  --neighbor-decade-from 1990s \
+  --neighbor-decade-to 2010s \
+  --neighbor-topn 5 \
+  --neighbor-output student3_semantic/word_shift_neighbors.csv \
+  --neighbor-summary-output student3_semantic/word_shift_summary.csv \
+  --output-dir student3_semantic
+
+python integration/newspeak_index.py \
+  --lexical student1_lexical/diversity_scores.csv \
+  --syntactic student2_syntactic/depth_scores.csv \
+  --semantic student3_semantic/drift_rate_by_decade.csv \
+  --output-dir integration \
+  --outputs-dir outputs \
+  --global-scaler-file integration/global_scaler_ranges.csv
+
+python integration/speakermap_join.py \
+  --cleaned-csv data/processed/cleaned_speeches.csv \
+  --newspeak-csv integration/newspeak_index.csv \
+  --output-dir integration \
+  --outputs-dir outputs
+
+python visualization/plots.py \
+  --lexical student1_lexical/diversity_scores.csv \
+  --syntactic student2_syntactic/depth_scores.csv \
+  --semantic student3_semantic/drift_rate_by_decade.csv \
+  --index integration/newspeak_index.csv \
+  --party integration/index_by_party.csv \
+  --output-dir outputs/figures
+```
+
+## Stability notes for large runs
+
+- `preprocessing/cleaner.py` now writes outputs congress-by-congress to reduce peak RAM usage on full-corpus runs.
+- To prototype safely before full scale, use `--sample-per-congress 10` in cleaner and raise later.
+- `preprocessing/embedder.py` now validates Pillow/transformers compatibility before loading RoBERTa and warns (instead of aborting) if contextual embedding fails; use `--contextual-strict` to fail fast.
+- If semantic output is empty, `integration/newspeak_index.py` now writes empty output artifacts with a warning instead of raising a scaler exception.
+- `student3_semantic/compute_semantic.py` now uses more practical defaults (`--min-shared-vocab 500`, `--min-word-count 5`) and supports `--auto-target-fallback` for robust full runs.
+
+Dashboard:
+
+```bash
+streamlit run visualization/app.py
+```
